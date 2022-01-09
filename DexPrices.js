@@ -1,5 +1,6 @@
 
 const fs = require('fs');
+const bodyParser = require('body-parser');
 const { parse } = require('dotenv');
 const ethers = require('ethers');
 const dotenv = require('dotenv').config();
@@ -9,8 +10,6 @@ const { parseUnits, formatEther } = require('ethers/lib/utils');
 const tokenList = require('./JoeTokenList.json');
 const { captureRejections } = require('events');
 const pangolinTokensJSON = require('./PangolinTokens.json');
-
-const qiAddress = '0x8729438eb15e2c8b576fcc6aecda6a148776c0f5';
 
 const usdtAddress = '0xc7198437980c041c805A1EDcbA50c1Ce5db95118';
 const wavaxAddress = '0xB31f66AA3C1e785363F0875A1B74E27b85FD66c7';
@@ -46,14 +45,28 @@ async function GetPriceForToken(tokenIn, tokenOut, decimals){
     const tokenInAmount  = '1000000000000000000';
 
     const tokenPath = [tokenIn, tokenOut];
+    const tokenPathReverse = [tokenOut, tokenIn];
 
     const joePrice = await traderJoeContract.getAmountsOut(tokenInAmount, tokenPath);
     const pangolinPrice = await pangolinContract.getAmountsOut(tokenInAmount, tokenPath);
-    
-    const joePriceToNumber = ethers.utils.formatUnits(joePrice[1], decimals);
-    const pangolinPriceToNumber = ethers.utils.formatUnits(pangolinPrice[1], decimals);
 
-    console.log(`JOE PRICE: ${joePriceToNumber} PANGOLIN PRICE: ${pangolinPriceToNumber}`);
+    
+
+    const joePriceToNumber = ethers.utils.formatEther(joePrice[1]);
+    const pangolinPriceToNumber = ethers.utils.formatEther(pangolinPrice[1]);
+
+    const joeBuyPrice = await traderJoeContract.getAmountsOut(joePrice[1],tokenPathReverse);
+    const pangolinBuyPrice = await pangolinContract.getAmountsOut(pangolinPrice[1], tokenPathReverse);
+    
+    const joeBuyPriceToNumber = ethers.utils.formatUnits(joeBuyPrice[1], decimals);
+    const pangolinBuyPriceToNumber = ethers.utils.formatUnits(pangolinBuyPrice[1], decimals);
+
+    console.log(`JOE BUY PRICE: ${joeBuyPriceToNumber}
+                \nJOE  SELL PRICE: ${joePriceToNumber}
+                \n JOE SPREAD: ${joePriceToNumber - joeBuyPriceToNumber} 
+                \nPANGOLIN BUY PRICE: ${pangolinBuyPriceToNumber}
+                \nPANGOLIN PRICE: ${pangolinPriceToNumber}
+                \n PANGOLIN SPREAD: ${pangolinPriceToNumber - pangolinBuyPriceToNumber}`);
 
     return {
         joePriceToNumber,
@@ -67,8 +80,10 @@ async function GetPricesForAllPangolinMatchedTokens(){
         const tokenAddress = tokens[i]['address'];
         const tokenDec = tokens[i]['decimals'];
         try{
-            const prices = await GetPriceForToken(tokenAddress, process.env.MIM_TOKEN_ADDRESS, tokenDec);
-        console.log(IsArbitrageOpportunity(prices), tokens[i]['symbol']);
+            //const quote = await getQuote(ethers.BigNumber.from((10**18).toString()), tokenAddress, wavaxAddress)
+            const prices = await GetPriceForToken(tokenAddress, wavaxAddress, tokenDec);
+            //console.log(tokens[i]['symbol'], ethers.utils.formatUnits(quote, tokenDec));
+            //console.log(IsArbitrageOpportunity(prices), tokens[i]['symbol']);
         }catch(error){
             console.error(error);
         }
@@ -77,9 +92,16 @@ async function GetPricesForAllPangolinMatchedTokens(){
     }
 
 }
+async function getQuote(amount, tokenIn, tokenOut){
+    const quote = await traderJoeContract.quote(amount, tokenIn, tokenOut);
+    return quote;
+}
 
 function IsArbitrageOpportunity(prices){
     return (prices.joePriceToNumber != prices.pangolinPriceToNumber && (Math.max(prices.joePriceToNumber, prices.pangolinPriceToNumber)- Math.abs(prices.joePriceToNumber - prices.pangolinPriceToNumber))/100 > .01);
+}
+function GetBidAskSpread(){
+    
 }
 
 
